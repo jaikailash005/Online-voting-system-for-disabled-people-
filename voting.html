@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Vote Now - Inclusive Voting App">
+  <title>Vote Now - Inclusive Voting App</title>
+  <link rel="stylesheet" href="styles.css">
+  <!-- Face-api.js from CDN - using specific version for stability -->
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+</head>
+<body>
+  <!-- Skip to main content link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Header -->
+  <header>
+    <div class="header-content">
+      <h1 class="app-title">Cast Your Vote</h1>
+      
+      <!-- Voice Controls -->
+      <div class="voice-controls">
+        <button 
+          id="btn-voice-toggle" 
+          class="btn btn-voice" 
+          aria-pressed="false"
+          aria-label="Toggle voice assistance"
+          title="Toggle voice assistance"
+        >
+          🎤 Voice
+        </button>
+        <div class="voice-status">
+          <span id="voice-indicator" class="mic-indicator" aria-hidden="true"></span>
+          <span id="voice-status-text" aria-live="polite">Voice: Off</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Menu -->
+  <nav role="navigation" aria-label="Main navigation">
+    <div class="container">
+      <ul class="nav-menu">
+        <li><a href="home.html">Home</a></li>
+        <li><a href="home.html#rules">Voting Rules</a></li>
+        <li><a href="voting.html" aria-current="page">Vote Now</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="container">
+    <main id="main-content" role="main">
+      <!-- Pre-vote Face Verification Section -->
+      <section id="face-verify-section" aria-labelledby="verify-title">
+        <div class="content-center">
+          <h2 id="verify-title">Final Verification Required</h2>
+          <p style="margin-bottom: var(--spacing-lg); max-width: 600px;">
+            Before you can vote, we need to verify your identity one more time to ensure 
+            security and prevent duplicate voting.
+          </p>
+
+          <div id="verification-status" role="status" aria-live="polite"></div>
+
+          <div class="video-container" id="video-container" style="display: none;">
+            <video id="video" autoplay playsinline muted></video>
+            <canvas id="canvas-overlay" class="canvas-overlay"></canvas>
+          </div>
+
+          <button id="btn-verify-face" class="btn btn-large">
+            Verify Identity
+          </button>
+        </div>
+      </section>
+
+      <!-- Voting Section (hidden until verification) -->
+      <section id="voting-section" style="display: none;" aria-labelledby="voting-title">
+        <h2 id="voting-title" style="text-align: center; margin-bottom: var(--spacing-lg);">
+          Select Your Candidate
+        </h2>
+        <p style="text-align: center; margin-bottom: var(--spacing-xl); font-size: var(--font-size-base); max-width: 800px; margin-left: auto; margin-right: auto;">
+          Please review each candidate carefully. You can say "Vote for candidate" followed by the number, 
+          or click the "Vote" button on your preferred candidate's card.
+        </p>
+
+        <!-- Candidates Grid -->
+        <div id="candidates-container" class="card-grid" role="list" aria-label="List of candidates">
+          <!-- Candidates will be dynamically inserted here -->
+        </div>
+      </section>
+
+      <!-- Thank You Section (hidden until vote is cast) -->
+      <section id="thank-you-section" style="display: none;" aria-labelledby="thank-you-title">
+        <div class="thank-you-container">
+          <div class="thank-you-icon">✓</div>
+          <h2 id="thank-you-title">Thank You for Voting!</h2>
+          <p style="font-size: var(--font-size-large); margin-bottom: var(--spacing-lg);">
+            Your vote has been recorded successfully.
+          </p>
+          <p style="margin-bottom: var(--spacing-xl);">
+            Your participation in the democratic process is greatly appreciated.
+          </p>
+          <a href="home.html" class="btn btn-large">
+            Return to Home
+          </a>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="script.js"></script>
+  <script src="voice.js"></script>
+  <script>
+    // Candidate data - 10 English political candidates
+    const CANDIDATES = [
+      {
+        number: 1,
+        name: "John Smith",
+        party: "Democratic Alliance",
+        description: "Experienced leader focused on healthcare reform, education access, and economic growth. Committed to transparency and citizen engagement.",
+        image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=300&fit=crop&crop=face"
+      },
+      {
+        number: 2,
+        name: "Sarah Johnson",
+        party: "Progressive Party",
+        description: "Advocate for social justice, environmental protection, and inclusive policies. Strong supporter of disability rights and accessibility.",
+        image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=300&fit=crop&crop=face"
+      },
+      {
+        number: 3,
+        name: "Michael Brown",
+        party: "Conservative Union",
+        description: "Focused on fiscal responsibility, national security, and traditional values. Promotes economic stability and job creation.",
+        image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=300&fit=crop&crop=face"
+      },
+      {
+        number: 4,
+        name: "Emily Davis",
+        party: "Green Future Party",
+        description: "Environmental activist dedicated to climate action, renewable energy, and sustainable development. Champion of green technology.",
+        image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&h=300&fit=crop&crop=face"
+      }
+    ];
+
+    // Face verification state
+    let video = null;
+    let stream = null;
+    let modelsLoaded = false;
+    let isVerifying = false;
+    const FACE_MATCH_THRESHOLD = 0.6;
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Check authentication
+      if (!isLoggedIn()) {
+        if (typeof speak === 'function') {
+          speak('Please login first.');
+        }
+        redirectTo('index.html');
+        return;
+      }
+
+      // Check if user has already voted
+      const aadhar = getCurrentSession();
+      if (hasUserVoted(aadhar)) {
+        showThankYou();
+        return;
+      }
+
+      // Initialize voice - make sure page context is set
+      if (typeof setCurrentPage === 'function') {
+        setCurrentPage('voting');
+        console.log('Page context set to: voting');
+      }
+      if (typeof initVoiceForPage === 'function') {
+        initVoiceForPage('voting', true);
+      } else if (typeof initSpeechRecognition === 'function') {
+        // Fallback: initialize voice manually
+        initSpeechRecognition();
+        if (typeof setAlwaysOnMode === 'function') {
+          setAlwaysOnMode(true);
+        }
+      }
+      
+      // Verify voice is working
+      setTimeout(() => {
+        if (typeof speak === 'function') {
+          speak('Voice assistance is active. You can use voice commands.');
+        }
+        console.log('Voice assistance initialized');
+      }, 1000);
+
+      // Load face-api models
+      await loadFaceModels();
+
+      // Setup verification button
+      const verifyBtn = document.getElementById('btn-verify-face');
+      verifyBtn.addEventListener('click', startPreVoteVerification);
+
+      // Setup voice toggle
+      const voiceToggleBtn = document.getElementById('btn-voice-toggle');
+      if (voiceToggleBtn && typeof toggleVoiceAssistance === 'function') {
+        voiceToggleBtn.addEventListener('click', toggleVoiceAssistance);
+      }
+
+      // Welcome message
+      setTimeout(() => {
+        if (typeof speak === 'function') {
+          speak('Voting page. Please verify your identity to proceed, or say "Verify identity" to begin.');
+        }
+      }, 500);
+    });
+
+    /**
+     * Load face-api.js models
+     */
+    async function loadFaceModels() {
+      try {
+        // Wait for face-api.js to be fully loaded
+        if (typeof faceapi === 'undefined') {
+          await new Promise((resolve) => {
+            const checkInterval = setInterval(() => {
+              if (typeof faceapi !== 'undefined') {
+                clearInterval(checkInterval);
+                resolve();
+              }
+            }, 100);
+            // Timeout after 10 seconds
+            setTimeout(() => {
+              clearInterval(checkInterval);
+              resolve();
+            }, 10000);
+          });
+        }
+
+        if (typeof faceapi === 'undefined') {
+          throw new Error('Face-api.js library not loaded. Please check your internet connection and refresh the page.');
+        }
+
+        // Use GitHub raw content for models (most reliable)
+        const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/';
+        
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+        ]);
+
+        modelsLoaded = true;
+        console.log('Face-api models loaded');
+      } catch (error) {
+        console.error('Error loading models:', error);
+        const errorMsg = error.message || 'Error loading face recognition models. Please check your internet connection and refresh the page.';
+        showStatus(errorMsg, 'error');
+        if (typeof speak === 'function') {
+          speak('Error loading face recognition models. Please check your internet connection and refresh the page.');
+        }
+      }
+    }
+
+    /**
+     * Start pre-vote face verification
+     */
+    async function startPreVoteVerification() {
+      if (isVerifying) return;
+      if (!modelsLoaded) {
+        showStatus('Models are still loading. Please wait...', 'error');
+        return;
+      }
+
+      isVerifying = true;
+      const verifyBtn = document.getElementById('btn-verify-face');
+      const videoContainer = document.getElementById('video-container');
+      const verifySection = document.getElementById('face-verify-section');
+
+      verifyBtn.disabled = true;
+      showStatus('Requesting camera access...', 'info');
+      if (typeof speak === 'function') {
+        speak('Requesting camera access for verification...');
+      }
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: 'user' }
+        });
+
+        video = document.getElementById('video');
+        video.srcObject = stream;
+        videoContainer.style.display = 'block';
+
+        showStatus('Camera active. Please position your face...', 'info');
+
+        video.onloadedmetadata = () => {
+          video.play();
+          setTimeout(() => {
+            verifyFace();
+          }, 1000);
+        };
+
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        isVerifying = false;
+        verifyBtn.disabled = false;
+        showStatus('Could not access camera. Please allow camera permissions.', 'error');
+        if (typeof speak === 'function') {
+          speak('Could not access camera. Please allow camera permissions.');
+        }
+      }
+    }
+
+    /**
+     * Verify face before voting
+     */
+    async function verifyFace() {
+      if (!video || !modelsLoaded) return;
+
+      try {
+        showStatus('Verifying identity...', 'info');
+        if (typeof speak === 'function') {
+          speak('Verifying your identity...');
+        }
+
+        const detection = await faceapi
+          .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
+        if (!detection) {
+          showStatus('No face detected. Please position your face in front of the camera.', 'error');
+          setTimeout(() => verifyFace(), 2000);
+          return;
+        }
+
+        const aadhar = getCurrentSession();
+        const storedDescriptor = getFaceDescriptor(aadhar);
+
+        if (!storedDescriptor) {
+          showStatus('Face not registered. Please complete initial verification first.', 'error');
+          stopCamera();
+          isVerifying = false;
+          document.getElementById('btn-verify-face').disabled = false;
+          if (typeof speak === 'function') {
+            speak('Face not registered. Please complete initial verification first.');
+          }
+          setTimeout(() => {
+            redirectTo('face-verification.html');
+          }, 3000);
+          return;
+        }
+
+        const distance = faceapi.euclideanDistance(storedDescriptor, detection.descriptor);
+        const isMatch = distance < FACE_MATCH_THRESHOLD;
+
+        if (isMatch) {
+          showStatus('Identity verified! Loading candidates...', 'success');
+          if (typeof speak === 'function') {
+            speak('Identity verified. Loading candidates...');
+          }
+          stopCamera();
+          showCandidates();
+        } else {
+          showStatus('Face not recognized. Please try again.', 'error');
+          if (typeof speak === 'function') {
+            speak('Face not recognized. Please try again.');
+          }
+          stopCamera();
+          isVerifying = false;
+          document.getElementById('btn-verify-face').disabled = false;
+        }
+
+      } catch (error) {
+        console.error('Error during verification:', error);
+        showStatus('Error during verification. Please try again.', 'error');
+        stopCamera();
+        isVerifying = false;
+        document.getElementById('btn-verify-face').disabled = false;
+      }
+    }
+
+    /**
+     * Show candidates for voting
+     */
+    function showCandidates() {
+      const verifySection = document.getElementById('face-verify-section');
+      const votingSection = document.getElementById('voting-section');
+      const candidatesContainer = document.getElementById('candidates-container');
+
+      verifySection.style.display = 'none';
+      votingSection.style.display = 'block';
+
+      // Clear existing candidates
+      candidatesContainer.innerHTML = '';
+
+      // Render candidates
+      CANDIDATES.forEach(candidate => {
+        const card = createCandidateCard(candidate);
+        candidatesContainer.appendChild(card);
+      });
+      
+      // Log for debugging
+      console.log('Candidates rendered:', CANDIDATES.length);
+      console.log('Vote buttons available:', document.querySelectorAll('.btn-vote').length);
+      
+      // Verify buttons are accessible
+      setTimeout(() => {
+        const allButtons = document.querySelectorAll('.btn-vote');
+        console.log('All vote buttons found:', allButtons.length);
+        allButtons.forEach((btn, idx) => {
+          const candidateNum = btn.getAttribute('data-candidate-number');
+          console.log(`Button ${idx}: candidate ${candidateNum}, visible: ${btn.offsetParent !== null}`);
+        });
+      }, 100);
+
+      // Ensure voice is still active and page context is set
+      if (typeof setCurrentPage === 'function') {
+        setCurrentPage('voting');
+        console.log('Page context reset to: voting');
+      }
+      
+      // Ensure voice recognition is still running
+      if (typeof startListening === 'function') {
+        try {
+          startListening();
+        } catch (e) {
+          console.log('Voice already listening or error:', e);
+        }
+      }
+
+      // Announce to screen readers
+      if (typeof speak === 'function') {
+        setTimeout(() => {
+          speak(`You can now vote. There are ${CANDIDATES.length} candidates. Say "Vote for candidate" followed by the number, or click the vote button.`);
+        }, 500);
+      }
+      
+      // Test: Log all vote buttons to verify they exist
+      setTimeout(() => {
+        const allVoteButtons = document.querySelectorAll('.btn-vote');
+        console.log('=== VOTE BUTTONS VERIFICATION ===');
+        console.log('Total vote buttons found:', allVoteButtons.length);
+        allVoteButtons.forEach((btn, idx) => {
+          console.log(`Button ${idx}:`, {
+            id: btn.id,
+            dataAttr: btn.getAttribute('data-candidate-number'),
+            visible: btn.offsetParent !== null,
+            element: btn
+          });
+        });
+        console.log('================================');
+      }, 1000);
+    }
+
+    /**
+     * Create candidate card element
+     */
+    function createCandidateCard(candidate) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.setAttribute('role', 'listitem');
+      card.setAttribute('data-candidate-number', candidate.number);
+      card.setAttribute('tabindex', '0');
+
+      card.innerHTML = `
+        <div style="position: relative;">
+          <div class="candidate-number-badge" style="
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: var(--accent-primary);
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: bold;
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            border: 3px solid white;
+          ">${candidate.number}</div>
+          <img 
+            src="${candidate.image}" 
+            alt="Photo of Candidate ${candidate.number}: ${candidate.name}" 
+            class="card-image"
+            loading="lazy"
+            onerror="this.src='https://via.placeholder.com/300x200/0066cc/ffffff?text=Candidate+${candidate.number}'"
+          >
+        </div>
+        <div style="margin-top: var(--spacing-sm);">
+          <h3 class="card-title" style="display: flex; align-items: center; gap: var(--spacing-xs);">
+            <span style="
+              background-color: var(--accent-primary);
+              color: white;
+              width: 40px;
+              height: 40px;
+              border-radius: 50%;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 20px;
+              font-weight: bold;
+              flex-shrink: 0;
+            ">${candidate.number}</span>
+            ${candidate.name}
+          </h3>
+          <p class="card-subtitle">${candidate.party}</p>
+          <p class="card-description">${candidate.description}</p>
+        </div>
+        <button 
+          class="btn btn-vote" 
+          data-candidate-number="${candidate.number}"
+          id="vote-btn-${candidate.number}"
+          aria-label="Vote for Candidate ${candidate.number}: ${candidate.name} from ${candidate.party}"
+        >
+          Vote for Candidate ${candidate.number}
+        </button>
+      `;
+
+      // Add vote button handler
+      const voteBtn = card.querySelector('.btn-vote');
+      voteBtn.addEventListener('click', () => handleVote(candidate));
+
+      // Keyboard support
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          voteBtn.click();
+        }
+      });
+
+      return card;
+    }
+
+    /**
+     * Handle vote for a candidate
+     */
+    function handleVote(candidate) {
+      const message = `Are you sure you want to vote for ${candidate.name} from ${candidate.party}?`;
+      
+      if (typeof speak === 'function') {
+        speak(message + ' Say "Confirm" or "Yes" to proceed, or "Cancel" or "No" to go back.');
+      }
+
+      showConfirmation(
+        message,
+        () => {
+          // Ensure page context is still set for voice commands
+          if (typeof setCurrentPage === 'function') {
+            setCurrentPage('voting');
+          }
+          // Confirm vote
+          const aadhar = getCurrentSession();
+          const success = storeVote(aadhar, candidate);
+
+          if (success) {
+            if (typeof speak === 'function') {
+              speak(`Your vote for ${candidate.name} has been recorded successfully. Thank you for voting!`);
+            }
+            showThankYou();
+          } else {
+            if (typeof speak === 'function') {
+              speak('Error recording your vote. Please try again.');
+            }
+            showStatus('Error recording your vote. Please try again.', 'error');
+          }
+        },
+        () => {
+          // Cancel vote
+          if (typeof speak === 'function') {
+            speak('Vote cancelled. You can select another candidate.');
+          }
+        }
+      );
+    }
+
+    /**
+     * Show thank you message
+     */
+    function showThankYou() {
+      const votingSection = document.getElementById('voting-section');
+      const thankYouSection = document.getElementById('thank-you-section');
+
+      votingSection.style.display = 'none';
+      thankYouSection.style.display = 'block';
+
+      // Focus on thank you section
+      thankYouSection.focus();
+      thankYouSection.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    /**
+     * Stop camera stream
+     */
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+      if (video) {
+        video.srcObject = null;
+      }
+      const videoContainer = document.getElementById('video-container');
+      if (videoContainer) {
+        videoContainer.style.display = 'none';
+      }
+    }
+
+    /**
+     * Show status message
+     */
+    function showStatus(message, type = 'info') {
+      const statusArea = document.getElementById('verification-status');
+      if (statusArea) {
+        statusArea.innerHTML = `<div class="status-message ${type}" role="alert" aria-live="polite">${message}</div>`;
+      }
+    }
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      stopCamera();
+    });
+  </script>
+</body>
+</html>
+

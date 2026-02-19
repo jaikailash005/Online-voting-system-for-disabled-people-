@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Facial Recognition Verification - Inclusive Voting App">
+  <title>Face Verification - Inclusive Voting App</title>
+  <link rel="stylesheet" href="styles.css">
+  <!-- Face-api.js from CDN - using specific version for stability -->
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+</head>
+<body>
+  <!-- Skip to main content link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <div class="container">
+    <main id="main-content" role="main" aria-labelledby="verification-title">
+      <div class="content-center">
+        <h1 id="verification-title">Facial Recognition Verification</h1>
+        <p style="margin-bottom: var(--spacing-lg); max-width: 600px;">
+          For security purposes, we need to verify your identity using facial recognition. 
+          This ensures that only you can vote and prevents duplicate voting.
+        </p>
+
+        <!-- Status Message Area -->
+        <div id="status-area" role="status" aria-live="polite"></div>
+
+        <!-- Video Container -->
+        <div class="video-container" id="video-container" style="display: none;">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="canvas-overlay" class="canvas-overlay"></canvas>
+        </div>
+
+        <!-- Instructions -->
+        <div id="instructions" style="max-width: 600px; margin: var(--spacing-lg) 0;">
+          <ol style="text-align: left; font-size: var(--font-size-base); line-height: 1.8;">
+            <li>Click "Start Verification" to begin</li>
+            <li>Allow camera access when prompted</li>
+            <li>Position your face in front of the camera</li>
+            <li>Keep still until verification is complete</li>
+          </ol>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="margin-top: var(--spacing-lg); display: flex; gap: var(--spacing-md); flex-wrap: wrap; justify-content: center;">
+          <button id="btn-start-verification" class="btn btn-large">
+            Start Verification
+          </button>
+          <button id="btn-retry" class="btn btn-secondary" style="display: none;">
+            Try Again
+          </button>
+          <button id="btn-cancel" class="btn btn-secondary">
+            Cancel
+          </button>
+        </div>
+
+        <!-- Voice Status -->
+        <div class="voice-controls" style="justify-content: center; margin-top: var(--spacing-lg);">
+          <div class="voice-status">
+            <span id="voice-indicator" class="mic-indicator" aria-hidden="true"></span>
+            <span id="voice-status-text">Voice: Off</span>
+          </div>
+        </div>
+
+        <!-- Voice Command Hint -->
+        <p style="margin-top: var(--spacing-md); font-size: 16px; color: var(--text-muted); text-align: center;">
+          <strong>Voice Command:</strong> Say "Start verification" to begin
+        </p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="script.js"></script>
+  <script src="voice.js"></script>
+  <script>
+    // Face verification state
+    let video = null;
+    let stream = null;
+    let modelsLoaded = false;
+    let isVerifying = false;
+    const FACE_MATCH_THRESHOLD = 0.6; // Adjustable threshold
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Check authentication
+      if (!isLoggedIn()) {
+        if (typeof speak === 'function') {
+          speak('Please login first.');
+        }
+        redirectTo('index.html');
+        return;
+      }
+
+      // Initialize voice
+      if (typeof initSpeechRecognition === 'function') {
+        initSpeechRecognition();
+        if (typeof setAlwaysOnMode === 'function') {
+          setAlwaysOnMode(true);
+        }
+      }
+
+      if (typeof setCurrentPage === 'function') {
+        setCurrentPage('face-verification');
+      }
+
+      // Load face-api models
+      await loadFaceModels();
+
+      // Get DOM elements
+      video = document.getElementById('video');
+      const startBtn = document.getElementById('btn-start-verification');
+      const retryBtn = document.getElementById('btn-retry');
+      const cancelBtn = document.getElementById('btn-cancel');
+      const videoContainer = document.getElementById('video-container');
+      const instructions = document.getElementById('instructions');
+
+      // Event handlers
+      startBtn.addEventListener('click', startVerification);
+      retryBtn.addEventListener('click', startVerification);
+      cancelBtn.addEventListener('click', cancelVerification);
+
+      // Welcome message
+      setTimeout(() => {
+        if (typeof speak === 'function') {
+          speak('Face verification page. Say "Start verification" to begin, or click the button.');
+        }
+      }, 500);
+    });
+
+    /**
+     * Load face-api.js models
+     */
+    async function loadFaceModels() {
+      try {
+        // Wait for face-api.js to be fully loaded
+        if (typeof faceapi === 'undefined') {
+          showStatus('Waiting for face recognition library to load...', 'info');
+          await new Promise((resolve) => {
+            const checkInterval = setInterval(() => {
+              if (typeof faceapi !== 'undefined') {
+                clearInterval(checkInterval);
+                resolve();
+              }
+            }, 100);
+            // Timeout after 10 seconds
+            setTimeout(() => {
+              clearInterval(checkInterval);
+              resolve();
+            }, 10000);
+          });
+        }
+
+        if (typeof faceapi === 'undefined') {
+          throw new Error('Face-api.js library not loaded. Please check your internet connection and refresh the page.');
+        }
+
+        showStatus('Loading face recognition models...', 'info');
+        
+        // Use GitHub raw content for models (most reliable)
+        const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/';
+        
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+        ]);
+
+        modelsLoaded = true;
+        showStatus('Models loaded successfully. Ready for verification.', 'success');
+        console.log('Face-api models loaded');
+      } catch (error) {
+        console.error('Error loading models:', error);
+        const errorMsg = error.message || 'Error loading face recognition models. Please check your internet connection and refresh the page.';
+        showStatus(errorMsg, 'error');
+        if (typeof speak === 'function') {
+          speak('Error loading face recognition models. Please check your internet connection and refresh the page.');
+        }
+      }
+    }
+
+    /**
+     * Start face verification process
+     */
+    async function startVerification() {
+      if (isVerifying) return;
+      if (!modelsLoaded) {
+        showStatus('Models are still loading. Please wait...', 'error');
+        return;
+      }
+
+      isVerifying = true;
+      const startBtn = document.getElementById('btn-start-verification');
+      const retryBtn = document.getElementById('btn-retry');
+      const videoContainer = document.getElementById('video-container');
+      const instructions = document.getElementById('instructions');
+
+      startBtn.disabled = true;
+      retryBtn.style.display = 'none';
+
+      try {
+        // Request camera access
+        showStatus('Requesting camera access...', 'info');
+        if (typeof speak === 'function') {
+          speak('Requesting camera access...');
+        }
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            width: 640, 
+            height: 480,
+            facingMode: 'user'
+          }
+        });
+
+        video.srcObject = stream;
+        videoContainer.style.display = 'block';
+        instructions.style.display = 'none';
+
+        showStatus('Camera active. Please position your face in front of the camera.', 'info');
+        if (typeof speak === 'function') {
+          speak('Camera active. Please position your face in front of the camera.');
+        }
+
+        // Wait for video to be ready
+        video.onloadedmetadata = () => {
+          video.play();
+          // Start detection after a short delay
+          setTimeout(() => {
+            detectAndVerify();
+          }, 1000);
+        };
+
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        isVerifying = false;
+        startBtn.disabled = false;
+        
+        let errorMsg = 'Could not access camera. ';
+        if (error.name === 'NotAllowedError') {
+          errorMsg += 'Please allow camera permissions and try again.';
+        } else if (error.name === 'NotFoundError') {
+          errorMsg += 'No camera found. Please connect a camera and try again.';
+        } else {
+          errorMsg += 'Please check your camera settings.';
+        }
+        
+        showStatus(errorMsg, 'error');
+        if (typeof speak === 'function') {
+          speak(errorMsg);
+        }
+      }
+    }
+
+    /**
+     * Detect face and verify identity
+     */
+    async function detectAndVerify() {
+      if (!video || !modelsLoaded) return;
+
+      try {
+        showStatus('Detecting face...', 'info');
+
+        // Detect face
+        const detection = await faceapi
+          .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
+        if (!detection) {
+          showStatus('No face detected. Please position your face in front of the camera.', 'error');
+          if (typeof speak === 'function') {
+            speak('No face detected. Please position your face in front of the camera.');
+          }
+          // Retry detection
+          setTimeout(() => detectAndVerify(), 2000);
+          return;
+        }
+
+        showStatus('Face detected. Verifying identity...', 'info');
+        if (typeof speak === 'function') {
+          speak('Face detected. Verifying identity...');
+        }
+
+        // Get current user's Aadhar
+        const aadhar = getCurrentSession();
+        if (!aadhar) {
+          showStatus('Session error. Please login again.', 'error');
+          redirectTo('index.html');
+          return;
+        }
+
+        // Get stored descriptor or create new one
+        const storedDescriptor = getFaceDescriptor(aadhar);
+        const currentDescriptor = detection.descriptor;
+
+        if (!storedDescriptor) {
+          // First time - store the descriptor
+          storeFaceDescriptor(aadhar, currentDescriptor);
+          showStatus('Face registered successfully!', 'success');
+          if (typeof speak === 'function') {
+            speak('Face registered successfully. Redirecting to home page...');
+          }
+          
+          // Stop camera
+          stopCamera();
+          
+          // Redirect to home
+          setTimeout(() => {
+            redirectTo('home.html');
+          }, 2000);
+        } else {
+          // Compare with stored descriptor
+          const distance = faceapi.euclideanDistance(storedDescriptor, currentDescriptor);
+          const isMatch = distance < FACE_MATCH_THRESHOLD;
+
+          if (isMatch) {
+            // Check if user has already voted
+            if (hasUserVoted(aadhar)) {
+              showStatus('You have already voted. Each person can only vote once.', 'error');
+              if (typeof speak === 'function') {
+                speak('You have already voted. Each person can only vote once.');
+              }
+              stopCamera();
+              setTimeout(() => {
+                redirectTo('home.html');
+              }, 3000);
+            } else {
+              showStatus('Face verified successfully!', 'success');
+              if (typeof speak === 'function') {
+                speak('Face verified successfully. Redirecting to home page...');
+              }
+              
+              stopCamera();
+              
+              // Redirect to home
+              setTimeout(() => {
+                redirectTo('home.html');
+              }, 2000);
+            }
+          } else {
+            showStatus('Face not recognized. Please try again.', 'error');
+            if (typeof speak === 'function') {
+              speak('Face not recognized. Please try again.');
+            }
+            
+            stopCamera();
+            isVerifying = false;
+            
+            const retryBtn = document.getElementById('btn-retry');
+            const startBtn = document.getElementById('btn-start-verification');
+            retryBtn.style.display = 'inline-block';
+            startBtn.disabled = false;
+            startBtn.style.display = 'none';
+          }
+        }
+
+      } catch (error) {
+        console.error('Error during face detection:', error);
+        showStatus('Error during verification. Please try again.', 'error');
+        if (typeof speak === 'function') {
+          speak('Error during verification. Please try again.');
+        }
+        stopCamera();
+        isVerifying = false;
+        
+        const retryBtn = document.getElementById('btn-retry');
+        const startBtn = document.getElementById('btn-start-verification');
+        retryBtn.style.display = 'inline-block';
+        startBtn.disabled = false;
+      }
+    }
+
+    /**
+     * Stop camera stream
+     */
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+      if (video) {
+        video.srcObject = null;
+      }
+      const videoContainer = document.getElementById('video-container');
+      if (videoContainer) {
+        videoContainer.style.display = 'none';
+      }
+      const instructions = document.getElementById('instructions');
+      if (instructions) {
+        instructions.style.display = 'block';
+      }
+    }
+
+    /**
+     * Cancel verification
+     */
+    function cancelVerification() {
+      stopCamera();
+      isVerifying = false;
+      
+      if (typeof speak === 'function') {
+        speak('Verification cancelled. Returning to login...');
+      }
+      
+      clearSession();
+      redirectTo('index.html');
+    }
+
+    /**
+     * Show status message
+     */
+    function showStatus(message, type = 'info') {
+      const statusArea = document.getElementById('status-area');
+      if (statusArea) {
+        statusArea.innerHTML = `<div class="status-message ${type}" role="alert" aria-live="polite">${message}</div>`;
+      }
+    }
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      stopCamera();
+    });
+  </script>
+</body>
+</html>
+

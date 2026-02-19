@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Inclusive Voting App - Secure login for differentially abled citizens">
+  <title>Login - Inclusive Voting App</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Skip to main content link for screen readers -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <div class="container">
+    <main id="main-content" role="main" aria-labelledby="login-title">
+      <div class="content-center">
+        <!-- Login Card -->
+        <div class="card" style="max-width: 500px;">
+          <h1 id="login-title">Secure Login</h1>
+          <p style="margin-bottom: var(--spacing-lg); color: var(--text-muted);">
+            Please enter your Aadhar Number and Password to continue.
+          </p>
+
+          <!-- Login Form -->
+          <form id="login-form" role="form" aria-labelledby="login-title" novalidate>
+            <!-- Aadhar Number Input -->
+            <div class="form-group">
+              <label for="aadhar-input">Aadhar Number</label>
+              <input 
+                type="text" 
+                id="aadhar-input" 
+                name="aadhar" 
+                autocomplete="username"
+                inputmode="numeric"
+                pattern="[0-9]{12}"
+                maxlength="12"
+                required
+                aria-required="true"
+                aria-describedby="aadhar-hint"
+                placeholder="Enter 12-digit Aadhar Number"
+              >
+              <small id="aadhar-hint">Enter your 12-digit Aadhar Number</small>
+            </div>
+
+            <!-- Password Input -->
+            <div class="form-group">
+              <label for="password-input">Password</label>
+              <input 
+                type="password" 
+                id="password-input" 
+                name="password" 
+                autocomplete="current-password"
+                required
+                aria-required="true"
+                aria-describedby="password-hint"
+                placeholder="Enter your password"
+              >
+              <small id="password-hint">Enter your password</small>
+            </div>
+
+            <!-- Voice Status -->
+            <div class="voice-controls" style="justify-content: center; margin-bottom: var(--spacing-md);">
+              <div class="voice-status">
+                <span id="voice-indicator" class="mic-indicator" aria-hidden="true"></span>
+                <span id="voice-status-text">Voice: Off</span>
+              </div>
+            </div>
+
+            <!-- Login Button -->
+            <button type="submit" id="btn-login" class="btn btn-large" style="width: 100%;">
+              Login
+            </button>
+
+            <!-- Voice Command Hint -->
+            <p style="margin-top: var(--spacing-md); font-size: 16px; color: var(--text-muted); text-align: center;">
+              <strong>Voice Command:</strong> Say "Login" to submit the form
+            </p>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="script.js"></script>
+  <script src="voice.js"></script>
+  <script>
+    // Initialize voice assistance for login page
+    document.addEventListener('DOMContentLoaded', () => {
+      // Initialize voice recognition
+      if (typeof initSpeechRecognition === 'function') {
+        initSpeechRecognition();
+        // Enable always-on mode for login page
+        if (typeof setAlwaysOnMode === 'function') {
+          setAlwaysOnMode(true);
+        }
+      }
+
+      // Set page context
+      if (typeof setCurrentPage === 'function') {
+        setCurrentPage('login');
+      }
+
+      // Login form handler
+      const loginForm = document.getElementById('login-form');
+      const aadharInput = document.getElementById('aadhar-input');
+      const passwordInput = document.getElementById('password-input');
+      const loginBtn = document.getElementById('btn-login');
+
+      // Format Aadhar input (numbers only)
+      aadharInput.addEventListener('input', (e) => {
+        e.target.value = e.target.value.replace(/\D/g, '');
+      });
+
+      // Handle form submission
+      loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        handleLogin();
+      });
+
+      // Enter key support
+      aadharInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          passwordInput.focus();
+        }
+      });
+
+      passwordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          handleLogin();
+        }
+      });
+
+      // Login function
+      function handleLogin() {
+        const aadhar = aadharInput.value.trim();
+        const password = passwordInput.value.trim();
+
+        // Validate login
+        const validation = validateLogin(aadhar, password);
+        
+        if (!validation.valid) {
+          // Show error message
+          if (typeof showStatusMessage === 'function') {
+            showStatusMessage(validation.message, 'error');
+          }
+          if (typeof speak === 'function') {
+            speak(validation.message);
+          }
+          return;
+        }
+
+        // Set session
+        setCurrentSession(aadhar);
+
+        // Announce success
+        if (typeof speak === 'function') {
+          speak('Login successful. Redirecting to face verification...');
+        }
+
+        // Redirect to face verification
+        setTimeout(() => {
+          redirectTo('face-verification.html');
+        }, 1000);
+      }
+
+      // Make handleLogin available globally for voice commands
+      window.handleLogin = handleLogin;
+
+      // Welcome message
+      setTimeout(() => {
+        if (typeof speak === 'function') {
+          speak('Welcome to the Inclusive Voting App. Please enter your Aadhar Number and Password, or say "Login" to proceed.');
+        }
+      }, 500);
+    });
+  </script>
+</body>
+</html>
+

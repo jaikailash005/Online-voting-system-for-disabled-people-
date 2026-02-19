@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Home - Inclusive Voting App">
+  <title>Home - Inclusive Voting App</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Skip to main content link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Header -->
+  <header>
+    <div class="header-content">
+      <h1 class="app-title">Inclusive Voting App</h1>
+      
+      <!-- Voice Controls -->
+      <div class="voice-controls">
+        <button 
+          id="btn-voice-toggle" 
+          class="btn btn-voice" 
+          aria-pressed="false"
+          aria-label="Toggle voice assistance"
+          title="Toggle voice assistance"
+        >
+          🎤 Voice
+        </button>
+        <div class="voice-status">
+          <span id="voice-indicator" class="mic-indicator" aria-hidden="true"></span>
+          <span id="voice-status-text" aria-live="polite">Voice: Off</span>
+        </div>
+      </div>
+
+      <!-- Profile Button -->
+      <div class="profile-container">
+        <button 
+          id="btn-profile" 
+          class="btn btn-secondary"
+          aria-label="Open profile menu"
+          aria-expanded="false"
+          aria-haspopup="true"
+        >
+          👤 Profile
+        </button>
+        <div id="profile-dropdown" class="profile-dropdown" role="menu">
+          <div class="profile-dropdown-item" role="menuitem" id="profile-info">
+            <strong>Logged in as:</strong><br>
+            <span id="profile-aadhar">-</span>
+          </div>
+          <div class="profile-dropdown-item" role="menuitem" id="btn-logout" tabindex="0">
+            Logout
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Menu -->
+  <nav role="navigation" aria-label="Main navigation">
+    <div class="container">
+      <ul class="nav-menu">
+        <li><a href="home.html" aria-current="page">Home</a></li>
+        <li><a href="#rules" onclick="scrollToRules(); return false;">Voting Rules</a></li>
+        <li><a href="voting.html">Vote Now</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="container">
+    <main id="main-content" role="main">
+      <!-- Welcome Section -->
+      <section aria-labelledby="welcome-title">
+        <div class="content-center">
+          <h2 id="welcome-title">Welcome to the Voting Portal</h2>
+          <p style="font-size: var(--font-size-large); margin-bottom: var(--spacing-lg); max-width: 800px;">
+            Your voice matters! This inclusive voting platform is designed to ensure that every citizen, 
+            regardless of ability, can participate in the democratic process.
+          </p>
+        </div>
+      </section>
+
+      <!-- Voting Rules Section -->
+      <section id="rules" class="rules-section" aria-labelledby="rules-title">
+        <h2 id="rules-title">Voting Rules and Regulations</h2>
+        
+        <p style="margin-bottom: var(--spacing-md); font-size: var(--font-size-base);">
+          Please read the following rules and regulations before casting your vote:
+        </p>
+
+        <ul style="font-size: var(--font-size-base); line-height: 1.8;">
+          <li>
+            <strong>One Vote Per Person:</strong> Each eligible citizen can cast only one vote. 
+            Facial recognition technology ensures that duplicate voting is prevented.
+          </li>
+          <li>
+            <strong>Verification Required:</strong> You must complete facial verification before 
+            accessing the voting page. This is a security measure to protect the integrity of the election.
+          </li>
+          <li>
+            <strong>Vote Confirmation:</strong> After selecting a candidate, you will be asked to 
+            confirm your choice. Once confirmed, your vote cannot be changed.
+          </li>
+          <li>
+            <strong>Privacy and Security:</strong> Your vote is confidential and securely stored. 
+            Your personal information is protected and will not be shared.
+          </li>
+          <li>
+            <strong>Accessibility:</strong> This platform supports voice commands and is designed 
+            to be accessible to all users. Voice assistance is available on all pages.
+          </li>
+          <li>
+            <strong>Time Limit:</strong> You have sufficient time to review candidates and make 
+            an informed decision. Take your time to read about each candidate.
+          </li>
+          <li>
+            <strong>No Campaigning:</strong> The voting area is a neutral space. No campaign 
+            materials or external influences are allowed during the voting process.
+          </li>
+          <li>
+            <strong>Technical Support:</strong> If you encounter any issues, please contact 
+            technical support. Do not share your login credentials with anyone.
+          </li>
+        </ul>
+
+        <p style="margin-top: var(--spacing-lg); font-size: var(--font-size-base); font-weight: var(--font-weight-bold);">
+          By proceeding to vote, you acknowledge that you have read and understood these rules and regulations.
+        </p>
+      </section>
+
+      <!-- Quick Actions -->
+      <section aria-labelledby="actions-title" style="margin-top: var(--spacing-xl);">
+        <div class="content-center">
+          <h2 id="actions-title">Ready to Vote?</h2>
+          <p style="margin-bottom: var(--spacing-lg); font-size: var(--font-size-base);">
+            Click the button below or say "Go to voting page" to begin the voting process.
+          </p>
+          <a href="voting.html" class="btn btn-large" role="button">
+            Vote Now
+          </a>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="script.js"></script>
+  <script src="voice.js"></script>
+  <script>
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      // Check authentication
+      if (!isLoggedIn()) {
+        if (typeof speak === 'function') {
+          speak('Please login first.');
+        }
+        redirectTo('index.html');
+        return;
+      }
+
+      // Initialize voice assistance
+      if (typeof initVoiceForPage === 'function') {
+        initVoiceForPage('home', true); // Auto-start always-on mode
+      }
+
+      // Update profile info
+      const aadhar = getCurrentSession();
+      const profileAadhar = document.getElementById('profile-aadhar');
+      if (profileAadhar && aadhar) {
+        profileAadhar.textContent = aadhar;
+      }
+
+      // Profile dropdown toggle
+      const profileBtn = document.getElementById('btn-profile');
+      const profileDropdown = document.getElementById('profile-dropdown');
+      
+      profileBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = profileDropdown.classList.contains('show');
+        profileDropdown.classList.toggle('show');
+        profileBtn.setAttribute('aria-expanded', !isOpen);
+      });
+
+      // Close dropdown when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!profileBtn.contains(e.target) && !profileDropdown.contains(e.target)) {
+          profileDropdown.classList.remove('show');
+          profileBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+
+      // Logout handler
+      const logoutBtn = document.getElementById('btn-logout');
+      logoutBtn.addEventListener('click', () => {
+        if (typeof speak === 'function') {
+          speak('Logging out...');
+        }
+        clearSession();
+        redirectTo('index.html');
+      });
+
+      // Voice toggle button
+      const voiceToggleBtn = document.getElementById('btn-voice-toggle');
+      if (voiceToggleBtn && typeof toggleVoiceAssistance === 'function') {
+        voiceToggleBtn.addEventListener('click', toggleVoiceAssistance);
+      }
+
+      // Update voice status periodically
+      if (typeof updateVoiceStatus === 'function') {
+        setInterval(updateVoiceStatus, 1000);
+      }
+    });
+
+    /**
+     * Scroll to rules section
+     */
+    function scrollToRules() {
+      const rulesSection = document.getElementById('rules');
+      if (rulesSection) {
+        rulesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        rulesSection.focus();
+        if (typeof speak === 'function') {
+          speak('Scrolled to voting rules section.');
+        }
+      }
+    }
+
+    // Make scrollToRules available globally
+    window.scrollToRules = scrollToRules;
+  </script>
+</body>
+</html>
+
